@@ -70,10 +70,11 @@ public class ConnectionsImpl<T> implements Connections <T >
         idToChannels.computeIfAbsent(connectionId, k -> ConcurrentHashMap.newKeySet()).add(channel);
     }
 
-    public void connectToActive(ConnectionHandler<T> handler) {
+    public int connectToActive(ConnectionHandler<T> handler) {
         int connectionId = counter.incrementAndGet();
         active.putIfAbsent(connectionId, handler);
         idToChannels.putIfAbsent(connectionId, ConcurrentHashMap.newKeySet());
+        return connectionId;
     }
 
 
