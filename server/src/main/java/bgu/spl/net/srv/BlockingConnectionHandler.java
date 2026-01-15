@@ -41,8 +41,7 @@ public class BlockingConnectionHandler<T> implements Runnable, ConnectionHandler
             in = new BufferedInputStream(sock.getInputStream());
             out = new BufferedOutputStream(sock.getOutputStream());
 
-            while (!protocol.shouldTerminate() && connected && (read = in.read()) >= 0) {
-                T nextMessage = encdec.decodeNextByte((byte) read);
+            while (connected && (read = in.read()) >= 0 && !shouldTerminate()) {                T nextMessage = encdec.decodeNextByte((byte) read);
                 if (nextMessage != null) {
                     if (protocol == null) {
                         stompProtocol.process(nextMessage);
@@ -62,6 +61,12 @@ public class BlockingConnectionHandler<T> implements Runnable, ConnectionHandler
 
     }
 
+    private boolean shouldTerminate() {
+            if (protocol != null) return protocol.shouldTerminate();
+            if (stompProtocol != null) return stompProtocol.shouldTerminate();
+            return false;
+        }
+
     @Override
     public void close() throws IOException {
         connected = false;
@@ -70,6 +75,12 @@ public class BlockingConnectionHandler<T> implements Runnable, ConnectionHandler
 
     @Override
     public void send(T msg) {
-        //IMPLEMENT IF NEEDED
+        try {
+            out.write(encdec.encode(msg));
+            out.flush();
+
+        } catch(Exception e) {
+            System.out.println("errorrrr "  + e);
+        }
     }
 }

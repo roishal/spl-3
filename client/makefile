@@ -1,13 +1,15 @@
 CFLAGS:=-c -Wall -Weffc++ -g -std=c++11 -Iinclude
 LDFLAGS:=-lboost_system -lpthread
 
-all: EchoClient
+# כאן השינוי: ברירת המחדל היא לבנות את StompClient
+all: StompClient
+
+# בניית הלקוח שביקשת (שיניתי את השם ל-StompClient כדי שיהיה נוח)
+StompClient: bin/ConnectionHandler.o bin/StompClient.o bin/event.o
+	g++ -o bin/StompClient bin/ConnectionHandler.o bin/StompClient.o bin/event.o $(LDFLAGS)
 
 EchoClient: bin/ConnectionHandler.o bin/echoClient.o
 	g++ -o bin/EchoClient bin/ConnectionHandler.o bin/echoClient.o $(LDFLAGS)
-
-StompWCIClient: bin/ConnectionHandler.o bin/StompClient.obin/event.o
-	g++ -o bin/StompWCIClient bin/ConnectionHandler.o bin/StompClient.o $(LDFLAGS)
 
 bin/ConnectionHandler.o: src/ConnectionHandler.cpp
 	g++ $(CFLAGS) -o bin/ConnectionHandler.o src/ConnectionHandler.cpp
@@ -24,4 +26,3 @@ bin/StompClient.o: src/StompClient.cpp
 .PHONY: clean
 clean:
 	rm -f bin/*
-	
