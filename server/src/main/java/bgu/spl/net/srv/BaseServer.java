@@ -12,17 +12,32 @@ import java.util.function.Supplier;
 public abstract class BaseServer<T> implements Server<T> {
 
     private final int port;
-    private final Supplier<StompMessagingProtocol<T>> protocolFactory;
+    private final Supplier<MessagingProtocol<T>> protocolFactory;
+    private final Supplier<StompMessagingProtocol<T>> stompProtocolFactory;
     private final Supplier<MessageEncoderDecoder<T>> encdecFactory;
     private ServerSocket sock;
 
     public BaseServer(
             int port,
-            Supplier<StompMessagingProtocol<T>> protocolFactory,
+            Supplier<MessagingProtocol<T>> protocolFactory,
             Supplier<MessageEncoderDecoder<T>> encdecFactory) {
 
         this.port = port;
         this.protocolFactory = protocolFactory;
+        this.stompProtocolFactory = null;
+        this.encdecFactory = encdecFactory;
+        this.sock = null;
+    }
+
+    public BaseServer(
+            int port,
+            Supplier<MessagingProtocol<T>> protocolFactory,
+            Supplier<StompMessagingProtocol<T>> stompProtocolFactory,
+            Supplier<MessageEncoderDecoder<T>> encdecFactory) {
+
+        this.port = port;
+        this.protocolFactory = null;
+        this.stompProtocolFactory = stompProtocolFactory;
         this.encdecFactory = encdecFactory;
         this.sock = null;
     }
@@ -39,15 +54,25 @@ public abstract class BaseServer<T> implements Server<T> {
             while (!Thread.currentThread().isInterrupted()) {
 
                 Socket clientSock = serverSock.accept();
-                StompMessagingProtocol<T> protocol = protocolFactory.get();
-                BlockingConnectionHandler<T> handler = new BlockingConnectionHandler<>(
+                if (stompProtocolFactory == null) {
+                    BlockingConnectionHandler<T> handler = new BlockingConnectionHandler<>(
                         clientSock,
                         encdecFactory.get(),
-                        protocol);
+                        protocolFactory.get());
+                execute(handler);
+
+                } else {
+                    StompMessagingProtocol<T> stompProtocol = stompProtocolFactory.get();
+                    BlockingConnectionHandler<T> handler = new BlockingConnectionHandler<>(
+                        clientSock,
+                        encdecFactory.get(),
+                        null, stompProtocol);
 
                 int connectionId = connections.connectToActive(handler);
-                protocol.start(connectionId, connections);
+                stompProtocol.start(connectionId, connections);        
+                
                 execute(handler);
+                }
             }
         } catch (IOException ex) {
         }

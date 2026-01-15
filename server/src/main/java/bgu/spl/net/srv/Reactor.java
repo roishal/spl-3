@@ -17,7 +17,8 @@ import java.util.function.Supplier;
 public class Reactor<T> implements Server<T> {
 
     private final int port;
-    private final Supplier<StompMessagingProtocol<T>> protocolFactory;
+    private final Supplier<MessagingProtocol<T>> protocolFactory;
+    private final Supplier<StompMessagingProtocol<T>> stompProtocolFactory;
     private final Supplier<MessageEncoderDecoder<T>> readerFactory;
     private final ActorThreadPool pool;
     private Selector selector;
@@ -28,12 +29,27 @@ public class Reactor<T> implements Server<T> {
     public Reactor(
             int numThreads,
             int port,
-            Supplier<StompMessagingProtocol<T>> protocolFactory,
+            Supplier<MessagingProtocol<T>> protocolFactory,
             Supplier<MessageEncoderDecoder<T>> readerFactory) {
 
         this.pool = new ActorThreadPool(numThreads);
         this.port = port;
         this.protocolFactory = protocolFactory;
+        this.stompProtocolFactory = null;
+        this.readerFactory = readerFactory;
+    }
+    
+    public Reactor(
+            int numThreads,
+            int port,
+            Supplier<MessagingProtocol<T>> protocolFactory,
+            Supplier<StompMessagingProtocol<T>> stompProtocolFactory,
+            Supplier<MessageEncoderDecoder<T>> readerFactory) {
+
+        this.pool = new ActorThreadPool(numThreads);
+        this.port = port;
+        this.protocolFactory = null;
+        this.stompProtocolFactory = stompProtocolFactory;
         this.readerFactory = readerFactory;
     }
 
@@ -61,7 +77,11 @@ public class Reactor<T> implements Server<T> {
                     if (!key.isValid()) {
                         continue;
                     } else if (key.isAcceptable()) {
-                        handleAccept(serverSock, selector, connections);
+                        if ( stompProtocolFactory == null) {
+                            handleAccept(serverSock, selector);
+                        } else {
+                            stompHandleAccept(serverSock, selector, connections);
+                        }
                     } else {
                         handleReadWrite(key);
                     }
@@ -94,13 +114,25 @@ public class Reactor<T> implements Server<T> {
         }
     }
 
-    // הוספנו לחתימה לשנות !!!!!
-    private void handleAccept(ServerSocketChannel serverChan, Selector selector, ConnectionsImpl<T> connections) throws IOException {
+    private void handleAccept(ServerSocketChannel serverChan, Selector selector) throws IOException {
         SocketChannel clientChan = serverChan.accept();
         clientChan.configureBlocking(false);
-        StompMessagingProtocol<T> protocol = protocolFactory.get();
         final NonBlockingConnectionHandler<T> handler = new NonBlockingConnectionHandler<>(
                 readerFactory.get(),
+                protocolFactory.get(),
+                clientChan,
+                this);
+        clientChan.register(selector, SelectionKey.OP_READ, handler);
+    }
+
+
+    private void stompHandleAccept(ServerSocketChannel serverChan, Selector selector, ConnectionsImpl<T> connections) throws IOException {
+        SocketChannel clientChan = serverChan.accept();
+        clientChan.configureBlocking(false);
+        StompMessagingProtocol<T> protocol = stompProtocolFactory.get();
+        final NonBlockingConnectionHandler<T> handler = new NonBlockingConnectionHandler<>(
+                readerFactory.get(),
+                null,
                 protocol,
                 clientChan,
                 this);

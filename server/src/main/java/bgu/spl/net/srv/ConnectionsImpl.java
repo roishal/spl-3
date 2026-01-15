@@ -8,8 +8,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class ConnectionsImpl<T> implements Connections <T >
 {
     private final ConcurrentMap<Integer, ConnectionHandler<T>> active;
-    private final ConcurrentMap<String, Set<Integer>> channelToIds;
-    private final ConcurrentMap<Integer, Set<String>> idToChannels;
+    private final ConcurrentMap<String, ConcurrentMap<Integer, String>> channelToIds;
+    private final ConcurrentMap<Integer, ConcurrentMap<String, String>> idToChannels;
     private AtomicInteger counter;
 
     public ConnectionsImpl(){
@@ -37,13 +37,14 @@ public class ConnectionsImpl<T> implements Connections <T >
     }
 
     @Override
-    public void send(String channel, T msg) {
-        Set<Integer> clients = channelToIds.get(channel);
-        if (clients!=null){
-            for (Integer id : clients){
-            send(id, msg);
-        }
-        }
+    public void send(String channel, T msg) { //msg will be String type
+        ConcurrentMap<Integer, String> clients = channelToIds.get(channel);
+        if (clients != null) {
+        clients.forEach((connectionId, subscriptionId) -> {
+            String msgStr = ((String) msg).replaceFirst("\n\n", "\nsubscription:" + subscriptionId + "\n\n");
+            send(connectionId, (T) msgStr);
+        });
+    }
     }
 
     @Override
@@ -57,38 +58,52 @@ public class ConnectionsImpl<T> implements Connections <T >
                 System.out.println("handler error" + e);
             }
         }
-        Set<String> channels = idToChannels.remove(connectionId);
-        if (channels!=null){
-            for (String channel : channels){
-                unSubscribe(channel, connectionId);
+        ConcurrentMap<String, String> subscriptions = idToChannels.remove(connectionId);
+        if (subscriptions!=null){
+            subscriptions.forEach((subscriptionId, channel) -> {
+            subscriptions.remove(subscriptionId);
+            if (channel != null) {
+                ConcurrentMap<Integer, String> clients = channelToIds.get(channel);
+                if (clients != null) {
+                    clients.remove(connectionId);
+                    if (clients.isEmpty()) {
+                        channelToIds.remove(channel); 
+                    }
+                    }
+                }
+            });
         }
-        }
+        
     }
 
-   public void subscribe(int connectionId, String channel) {
-        channelToIds.computeIfAbsent(channel, k -> ConcurrentHashMap.newKeySet()).add(connectionId);
-        idToChannels.computeIfAbsent(connectionId, k -> ConcurrentHashMap.newKeySet()).add(channel);
+   public void subscribe(int connectionId, String channel, String subscriptionId) {
+        channelToIds.computeIfAbsent(channel, k -> new ConcurrentHashMap<>()).put(connectionId, subscriptionId);    
+        idToChannels.get(connectionId).put(subscriptionId, channel);
     }
 
     public int connectToActive(ConnectionHandler<T> handler) {
         int connectionId = counter.incrementAndGet();
         active.putIfAbsent(connectionId, handler);
-        idToChannels.putIfAbsent(connectionId, ConcurrentHashMap.newKeySet());
+        idToChannels.putIfAbsent(connectionId, new ConcurrentHashMap<>());
         return connectionId;
     }
 
 
 
-    public void unSubscribe(String channel, int connectionId){
-            Set<Integer> clients = channelToIds.get(channel);
-            if (clients!=null){
-                clients.remove(connectionId);
-                if (clients.isEmpty()){
-                    channelToIds.remove(channel, clients);
+    public void unsubscribe(int connectionId, String subscriptionId){
+        ConcurrentMap<String, String> subscriptions = idToChannels.get(connectionId);
+        if (subscriptions != null) {
+            String channel = subscriptions.remove(subscriptionId);
+            if (channel != null) {
+                ConcurrentMap<Integer, String> clients = channelToIds.get(channel);
+                if (clients != null) {
+                    clients.remove(connectionId);
+                    if (clients.isEmpty()) {
+                        channelToIds.remove(channel); 
+                    }
                 }
             }
-
-
+        }
     }
 
 }
